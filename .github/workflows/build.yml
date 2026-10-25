@@ -15,13 +15,13 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            configure: cmake -B build -G "Visual Studio 17 2022" -A x64
+            configure: cmake -B build -A x64
           - name: macOS
             os: macos-latest
             configure: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -50,7 +50,7 @@ jobs:
           New-Item -ItemType Directory dist | Out-Null
           Compress-Archive -Path build/Monolithe_artefacts/Release/VST3/MONOLITHE.vst3 -DestinationPath dist/MONOLITHE-Windows-VST3.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: MONOLITHE-${{ matrix.name }}
           path: dist/*.zip
