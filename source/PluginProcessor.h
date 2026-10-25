@@ -37,6 +37,9 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
+    // names shown by hosts that support them in their MIDI editor ("01 GRAVE" instead of C1)
+    std::optional<juce::String> getNameForMidiNoteNumber (int note, int midiChannel) override;
+
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 

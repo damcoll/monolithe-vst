@@ -179,6 +179,14 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     raise (outputPeak, peakOut);
 }
 
+std::optional<juce::String> MonolitheProcessor::getNameForMidiNoteNumber (int note, int)
+{
+    const auto voice = note - mono::firstNote;
+    if (voice < 0 || voice >= mono::numVoices)
+        return std::nullopt;
+    return juce::String::formatted ("%02d ", voice + 1) + juce::String::fromUTF8 (mono::voiceNames[(size_t) voice]);
+}
+
 juce::AudioProcessorEditor* MonolitheProcessor::createEditor()
 {
     return new MonolitheEditor (*this);
