@@ -92,5 +92,44 @@ int main (int argc, char* argv[])
         std::cout << label << " (DERIVE/POUSSIERE " << amount << ")  peak "
                   << juce::Decibels::gainToDecibels (out.getMagnitude (0, out.getNumSamples())) << " dB\n";
     }
+
+    // DÉRIVE alone: the same GRAVE / CLOCHE hit 16 times, first with DÉRIVE at 0, then at 1
+    {
+        const auto beat = (int) (renderRate * 60.0 / bpm);
+        const auto half = beat * 16;
+        juce::AudioBuffer<float> out (2, half * 2 + beat);
+        out.clear();
+
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            std::unique_ptr<juce::AudioProcessor> plugin (createPluginFilter());
+            plugin->setPlayConfigDetails (0, 2, renderRate, blockSize);
+            plugin->prepareToPlay (renderRate, blockSize);
+            setParam (*plugin, "derive", (float) pass);
+            setParam (*plugin, "poussiere", 0.0f);
+
+            juce::AudioBuffer<float> block (2, blockSize);
+            for (int start = 0; start < half; start += blockSize)
+            {
+                juce::MidiBuffer midi;
+                for (int s = start; s < start + blockSize; ++s)
+                    if (s % beat == 0 && s < half - beat)
+                        midi.addEvent (juce::MidiMessage::noteOn (10, (s / beat) % 2 == 0 ? 36 : 42, (juce::uint8) 100), s - start);
+                plugin->processBlock (block, midi);
+                const auto n = std::min (blockSize, half - start);
+                for (int ch = 0; ch < 2; ++ch)
+                    out.copyFrom (ch, pass * half + start, block, ch, 0, n);
+            }
+        }
+
+        const auto file = outDir.getChildFile ("derive_0_puis_1.wav");
+        file.deleteFile();
+        std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+        juce::WavAudioFormat wav;
+        auto writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (renderRate).withNumChannels (2).withBitsPerSample (24));
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (out, 0, out.getNumSamples()))
+            return 1;
+        std::cout << "derive_0_puis_1 written\n";
+    }
     return 0;
 }
