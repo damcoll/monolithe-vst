@@ -13,8 +13,8 @@ namespace mono
     constexpr int numVoices = 8;
     constexpr int firstNote = 36; // C1: Ableton Drum Rack layout
 
-    // each voice peaks around -6 dBFS on a hard hit, leaving room for the mix
-    constexpr float headroom = 0.5f;
+    // each voice peaks around -3 dBFS on a hard hit; the output stage catches the sum
+    constexpr float headroom = 0.7f;
 
     // UTF-8, numbered as on the hardware front panel
     constexpr std::array<const char*, numVoices> voiceNames {
@@ -43,7 +43,8 @@ namespace mono
         float accord = 0.5f, duree = 0.5f;
     };
 
-    // 01 GRAVE: struck low resonator with a fast pitch drop, slightly saturated
+    // 01 GRAVE: struck low resonator with a fast pitch drop, driven into saturation
+    // so its harmonics stay audible on small speakers that can't play 55 Hz
     class Grave final : public Voice
     {
     public:
@@ -52,10 +53,13 @@ namespace mono
             baseFreq = expMap (accord, 36.0, 87.0);
             body.setDecay (expMap (duree, 0.15, 1.6), sampleRate);
             sweep.setTime (0.03, sampleRate);
-            sweep.trigger (0.8f + 1.2f * velocity); // harder hits start higher
+            sweep.trigger (1.5f + 1.5f * velocity); // harder hits start higher
             click.setTime (0.004, sampleRate);
-            click.trigger (0.12f * velocity);
-            strike = velocity;
+            click.trigger (0.25f);
+            // strike at full level so the saturation colour is the same on every hit,
+            // and apply the velocity after it to keep the dynamics
+            strike = 1.0f;
+            hitLevel = velocity;
         }
 
         float next() override
@@ -63,7 +67,7 @@ namespace mono
             body.setFreq (baseFreq * (1.0 + sweep.next()), sampleRate);
             const auto y = body.next (strike) + click.next() * noise.next();
             strike = 0.0f;
-            return headroom * softClip (y, 1.6f);
+            return headroom * hitLevel * softClip (y, 2.6f);
         }
 
     private:
@@ -71,7 +75,7 @@ namespace mono
         Decay sweep, click;
         Noise noise { 0x1234567u };
         double baseFreq = 55.0;
-        float strike = 0.0f;
+        float strike = 0.0f, hitLevel = 0.0f;
     };
 
     // 02 PEAU: two body modes plus a noise snap through a high-pass

@@ -117,7 +117,8 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                 if (v.dsp != nullptr)
                     mix += v.dsp->next() * g;
             }
-            const auto out = mix * masterGain.getNextValue();
+            // MASTER at its default (0.8) is unity gain; tanh tames the peaks of the sum
+            const auto out = std::tanh (mix * 1.25f * masterGain.getNextValue());
             left[sample] = out;
             right[sample] = out;
         }
