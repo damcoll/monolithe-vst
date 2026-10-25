@@ -108,6 +108,41 @@ namespace mono
         float low = 0.0f, band = 0.0f, high = 0.0f;
     };
 
+    // Band-limited square (polyBLEP), so high oscillators don't alias
+    struct Square
+    {
+        void setFreq (double freq, double sampleRate) { inc = freq / sampleRate; }
+
+        float next()
+        {
+            auto v = phase < 0.5 ? 1.0f : -1.0f;
+            v += blep (phase);
+            v -= blep (std::fmod (phase + 0.5, 1.0));
+            phase += inc;
+            if (phase >= 1.0)
+                phase -= 1.0;
+            return v;
+        }
+
+        double phase = 0.0, inc = 0.0;
+
+    private:
+        float blep (double t) const
+        {
+            if (t < inc)
+            {
+                t /= inc;
+                return (float) (t + t - t * t - 1.0);
+            }
+            if (t > 1.0 - inc)
+            {
+                t = (t - 1.0) / inc;
+                return (float) (t * t + t + t + 1.0);
+            }
+            return 0.0f;
+        }
+    };
+
     // soft saturation normalised so that +/-1 stays +/-1
     inline float softClip (float x, float drive)
     {

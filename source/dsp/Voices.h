@@ -114,6 +114,76 @@ namespace mono
         float strike = 0.0f;
     };
 
+    // 03 BRUIT: white noise through a tuned band-pass, harder hits are brighter
+    class Bruit final : public Voice
+    {
+    public:
+        void trigger (float velocity) override
+        {
+            const auto freq = expMap (accord, 500.0, 9000.0) * (0.85 + 0.3 * velocity);
+            filter.set (freq, 2.2, sampleRate);
+            env.setTime (expMap (duree, 0.03, 0.6), sampleRate);
+            env.trigger (velocity);
+        }
+
+        float next() override
+        {
+            filter.process (noise.next());
+            // a little of the high-pass keeps some air above the band
+            const auto y = (1.6f * filter.band + 0.25f * filter.high) * env.next();
+            return headroom * softClip (y, 1.2f);
+        }
+
+    private:
+        Svf filter;
+        Decay env;
+        Noise noise { 0x13579bdu };
+    };
+
+    // 04 MÉTAL: six squares at the 808 cymbal ratios, two band-passes, then a high-pass
+    class Metal final : public Voice
+    {
+    public:
+        void prepare (double newSampleRate) override
+        {
+            Voice::prepare (newSampleRate);
+            low.set (3440.0, 3.0, sampleRate);
+            high.set (7100.0, 3.0, sampleRate);
+            air.set (6000.0, 0.7, sampleRate);
+            // spread the starting phases so the six edges don't line up
+            for (size_t i = 0; i < oscillators.size(); ++i)
+                oscillators[i].phase = 0.137 * (double) i;
+        }
+
+        void trigger (float velocity) override
+        {
+            const auto scale = expMap (accord, 0.5, 2.0);
+            for (size_t i = 0; i < oscillators.size(); ++i)
+                oscillators[i].setFreq (ratios808[i] * scale, sampleRate);
+            env.setTime (expMap (duree, 0.03, 0.9), sampleRate);
+            env.trigger (velocity);
+        }
+
+        float next() override
+        {
+            float sum = 0.0f;
+            for (auto& o : oscillators)
+                sum += o.next();
+
+            low.process (sum);
+            high.process (sum);
+            air.process (low.band + high.band);
+            const auto y = 0.9f * air.high * env.next();
+            return headroom * softClip (y, 1.5f);
+        }
+
+    private:
+        static constexpr std::array<double, 6> ratios808 { 205.3, 304.4, 369.6, 522.7, 540.0, 800.0 };
+        std::array<Square, 6> oscillators;
+        Svf low, high, air;
+        Decay env;
+    };
+
     // returns nullptr for the voices not written yet
     inline std::unique_ptr<Voice> makeVoice (int index)
     {
@@ -121,6 +191,8 @@ namespace mono
         {
             case 0: return std::make_unique<Grave>();
             case 1: return std::make_unique<Peau>();
+            case 2: return std::make_unique<Bruit>();
+            case 3: return std::make_unique<Metal>();
             default: return nullptr;
         }
     }
