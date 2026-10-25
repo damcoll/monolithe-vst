@@ -47,6 +47,11 @@ public:
     // read by the editor (message thread): MIDI LED and last note received
     std::atomic<int> noteCounter { 0 };
     std::atomic<int> lastNote { -1 };
+    std::atomic<int> lastVoice { -1 };
+
+    // loudest sample since the editor last read them (read with exchange (0)): pads and VU needle
+    std::array<std::atomic<float>, mono::numVoices> voicePeaks {};
+    std::atomic<float> outputPeak { 0.0f };
 
     // set by the editor's audition buttons (one bit per voice), consumed by the audio thread
     std::atomic<uint32_t> auditionMask { 0 };

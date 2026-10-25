@@ -40,7 +40,17 @@ juce_add_plugin(Monolithe
 target_sources(Monolithe
     PRIVATE
         source/PluginProcessor.cpp
-        source/PluginEditor.cpp)
+        source/PluginEditor.cpp
+        source/ui/Theme.cpp
+        source/ui/Controls.cpp)
+
+# the MONOLITHE typefaces (SIL Open Font License, see assets/fonts)
+juce_add_binary_data(MonolitheAssets
+    SOURCES
+        assets/fonts/BigShouldersStencilDisplay-Black.ttf
+        assets/fonts/BigShouldersDisplay-ExtraBold.ttf
+        assets/fonts/IBMPlexMono-Regular.ttf
+        assets/fonts/IBMPlexMono-SemiBold.ttf)
 
 target_include_directories(Monolithe PRIVATE source)
 
@@ -52,6 +62,7 @@ target_compile_definitions(Monolithe
 
 target_link_libraries(Monolithe
     PRIVATE
+        MonolitheAssets
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -76,3 +87,15 @@ target_link_libraries(MonolitheRender
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
+
+# Snapshot: a PNG of the plugin window, to check the front panel without a DAW
+juce_add_console_app(MonolitheSnapshot PRODUCT_NAME "monolithe_snapshot")
+target_sources(MonolitheSnapshot PRIVATE tools/snapshot.cpp)
+# reuse the plugin's compiled code: same headers and settings, without compiling JUCE twice
+target_include_directories(MonolitheSnapshot PRIVATE $<TARGET_PROPERTY:Monolithe,INCLUDE_DIRECTORIES>)
+target_compile_definitions(MonolitheSnapshot PRIVATE $<TARGET_PROPERTY:Monolithe,COMPILE_DEFINITIONS>)
+target_link_libraries(MonolitheSnapshot
+    PRIVATE
+        Monolithe
+    PUBLIC
+        juce::juce_recommended_config_flags)

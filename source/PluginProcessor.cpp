@@ -69,6 +69,7 @@ void MonolitheProcessor::trigger (int voice, float velocity)
     // ACCENT = how much the velocity matters: 0 -> every hit is full, 1 -> fully dynamic
     const auto accent = accentParam->load();
     v.dsp->setControls (v.accord->load(), v.duree->load());
+    lastVoice.store (voice, std::memory_order_relaxed);
     v.dsp->trigger (1.0f - accent * (1.0f - velocity));
 }
 
@@ -105,20 +106,28 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     auto* left = buffer.getWritePointer (0);
     auto* right = buffer.getWritePointer (1);
     int sample = 0;
+    std::array<float, mono::numVoices> peaks {};
+    float peakOut = 0.0f;
 
     const auto renderUntil = [&] (int end)
     {
         for (; sample < end; ++sample)
         {
             float mix = 0.0f;
-            for (auto& v : voices)
+            for (size_t i = 0; i < voices.size(); ++i)
             {
+                auto& v = voices[i];
                 const auto g = v.gain.getNextValue();
                 if (v.dsp != nullptr)
-                    mix += v.dsp->next() * g;
+                {
+                    const auto s = v.dsp->next() * g;
+                    peaks[i] = std::max (peaks[i], std::abs (s));
+                    mix += s;
+                }
             }
             // MASTER at its default (0.8) is unity gain; tanh tames the peaks of the sum
             const auto out = std::tanh (mix * 1.25f * masterGain.getNextValue());
+            peakOut = std::max (peakOut, std::abs (out));
             left[sample] = out;
             right[sample] = out;
         }
@@ -151,6 +160,16 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         }
     }
     renderUntil (buffer.getNumSamples());
+
+    // keep the maximum until the editor collects it
+    const auto raise = [] (std::atomic<float>& slot, float value)
+    {
+        auto current = slot.load (std::memory_order_relaxed);
+        while (value > current && ! slot.compare_exchange_weak (current, value, std::memory_order_relaxed)) {}
+    };
+    for (size_t i = 0; i < peaks.size(); ++i)
+        raise (voicePeaks[i], peaks[i]);
+    raise (outputPeak, peakOut);
 }
 
 juce::AudioProcessorEditor* MonolitheProcessor::createEditor()

@@ -3,7 +3,7 @@
 Boîte à rythmes logicielle à 8 voix, au son lo-fi, pilotée par le MIDI de votre logiciel de musique.
 Version plugin du projet matériel MONOLITHE. Gratuit et open source (AGPLv3).
 
-> **État : squelette (v0.1 en cours).** Une note C1 joue un son de test. Les vraies voix arrivent.
+> **État : v0.1 en cours.** Les 8 voix et la façade sont en place ; DÉRIVE et POUSSIÈRE arrivent.
 
 ## Les voix
 
@@ -48,3 +48,4 @@ Les plugins sont dans `build/Monolithe_artefacts/Release/`.
 ## Licence
 
 AGPLv3, voir [LICENSE](LICENSE). Construit avec [JUCE](https://juce.com) (AGPLv3) et le SDK VST3 de Steinberg (MIT).
+Polices intégrées : Big Shoulders et IBM Plex Mono, sous SIL Open Font License (voir `assets/fonts`).
