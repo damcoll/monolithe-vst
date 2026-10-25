@@ -47,15 +47,22 @@ jobs:
             curl -sfL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
             unzip -q pluginval.zip
             PLUGINVAL=pluginval.app/Contents/MacOS/pluginval
-            mkdir -p ~/Library/Audio/Plug-Ins/Components
-            cp -R build/Monolithe_artefacts/Release/AU/MONOLITHE.component ~/Library/Audio/Plug-Ins/Components/
-            $PLUGINVAL --strictness-level 5 --skip-gui-tests --validate-in-process --validate ~/Library/Audio/Plug-Ins/Components/MONOLITHE.component
           else
             curl -sfL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip
             unzip -q pluginval.zip
             PLUGINVAL=./pluginval.exe
           fi
           $PLUGINVAL --strictness-level 5 --skip-gui-tests --validate-in-process --validate "$VST3"
+
+          if [ "$RUNNER_OS" = macOS ]; then
+            # install the AU and make macOS register it before testing
+            mkdir -p ~/Library/Audio/Plug-Ins/Components
+            cp -R build/Monolithe_artefacts/Release/AU/MONOLITHE.component ~/Library/Audio/Plug-Ins/Components/
+            killall -9 AudioComponentRegistrar || true
+            auval -a > /dev/null
+            auval -v aumu Mnl1 Mnlt
+            $PLUGINVAL --strictness-level 5 --skip-gui-tests --validate-in-process --validate ~/Library/Audio/Plug-Ins/Components/MONOLITHE.component
+          fi
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
