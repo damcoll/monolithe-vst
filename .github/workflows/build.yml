@@ -1,0 +1,56 @@
+name: Compilation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            configure: cmake -B build -G "Visual Studio 17 2022" -A x64
+          - name: macOS
+            os: macos-latest
+            configure: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        shell: bash
+        run: ${{ matrix.configure }}
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release --parallel 4 --target Monolithe_VST3 $([ "$RUNNER_OS" = macOS ] && echo "Monolithe_AU")
+
+      # macOS refuses unsigned code on Apple Silicon: an ad-hoc signature is enough to load it
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir dist
+          cd build/Monolithe_artefacts/Release
+          codesign --force --deep -s - VST3/MONOLITHE.vst3 AU/MONOLITHE.component
+          ditto -c -k --keepParent VST3/MONOLITHE.vst3 ../../../dist/MONOLITHE-macOS-VST3.zip
+          ditto -c -k --keepParent AU/MONOLITHE.component ../../../dist/MONOLITHE-macOS-AU.zip
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Compress-Archive -Path build/Monolithe_artefacts/Release/VST3/MONOLITHE.vst3 -DestinationPath dist/MONOLITHE-Windows-VST3.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MONOLITHE-${{ matrix.name }}
+          path: dist/*.zip
