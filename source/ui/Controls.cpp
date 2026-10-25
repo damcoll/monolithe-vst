@@ -81,11 +81,21 @@ namespace ui
         g.drawRoundedRectangle (bounds, 2.0f, 2.0f);
     }
 
+    namespace
+    {
+        // Classic VU scale: the needle moves linearly with the signal voltage, +3 VU at the right stop.
+        // 0 VU is set to -6 dBFS, so a hard hit lands around 0 and the loudest peaks reach the top.
+        constexpr float zeroVuGain = 0.5f;
+        constexpr float fullScaleGain = zeroVuGain * 1.4125f; // +3 VU
+
+        float scalePosition (float vuDb) { return juce::Decibels::decibelsToGain (vuDb) * zeroVuGain / fullScaleGain; }
+
+        constexpr float sweep = 0.87f; // half the scale angle, ~50 degrees
+    }
+
     void VuMeter::update (float peak, const juce::String& voiceName)
     {
-        // scale: -40 dB at the left stop, +3 dB at the right stop
-        const auto db = juce::Decibels::gainToDecibels (peak, -40.0f);
-        const auto target = juce::jlimit (0.0f, 1.0f, (db + 40.0f) / 43.0f);
+        const auto target = juce::jlimit (0.0f, 1.0f, peak / fullScaleGain);
 
         // VU-like ballistics at 30 Hz: quick rise, slower fall
         needle += (target - needle) * (target > needle ? 0.45f : 0.12f);
@@ -106,20 +116,48 @@ namespace ui
         g.saveState();
         g.reduceClipRegion (getLocalBounds().reduced (3));
 
-        // the dial: a circle whose lower half is hidden by the screen edge, like the hardware OLED
-        const auto centre = juce::Point<float> (bounds.getCentreX(), 85.0f);
-        const auto radius = 59.0f;
-        g.setColour (colours::ambre);
-        g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre), 2.0f);
+        // the needle pivots on the bottom edge of the screen
+        const auto pivot = juce::Point<float> (bounds.getCentreX(), bounds.getBottom() - 4.0f);
+        const auto radius = 98.0f;
+        const auto pointAt = [&] (float position, float r)
+        {
+            const auto angle = (position * 2.0f - 1.0f) * sweep;
+            return pivot + juce::Point<float> (std::sin (angle), -std::cos (angle)) * r;
+        };
 
-        const auto angle = juce::jmap (needle, -0.9f, 0.9f); // about +/- 52 degrees
-        const auto tip = centre + juce::Point<float> (std::sin (angle), -std::cos (angle)) * (radius - 4.0f);
-        g.drawLine ({ centre, tip }, 2.0f);
-        g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (centre));
+        g.setColour (colours::ambre);
+
+        // scale line, thicker above 0 VU
+        juce::Path arc, hot;
+        arc.addCentredArc (pivot.x, pivot.y, radius, radius, 0.0f, -sweep, (scalePosition (0.0f) * 2.0f - 1.0f) * sweep, true);
+        hot.addCentredArc (pivot.x, pivot.y, radius + 1.5f, radius + 1.5f, 0.0f, (scalePosition (0.0f) * 2.0f - 1.0f) * sweep, sweep, true);
+        g.strokePath (arc, juce::PathStrokeType (1.0f));
+        g.strokePath (hot, juce::PathStrokeType (4.0f));
+
+        // minor ticks every dB from -10 to +3, major ticks with numbers
+        for (int db = -10; db <= 3; ++db)
+        {
+            const auto p = scalePosition ((float) db);
+            g.drawLine ({ pointAt (p, radius), pointAt (p, radius + 4.0f) }, 1.0f);
+        }
+
+        g.setFont (font (Face::mono, 9.0f));
+        const std::pair<int, const char*> marks[] = { { -20, "20" }, { -10, "10" }, { -7, "7" }, { -5, "5" }, { -3, "3" }, { 0, "0" }, { 3, "+3" } };
+        for (const auto& [db, label] : marks)
+        {
+            const auto p = scalePosition ((float) db);
+            g.drawLine ({ pointAt (p, radius - 4.0f), pointAt (p, radius + 7.0f) }, 1.5f);
+            const auto at = pointAt (p, radius + 14.0f);
+            g.drawText (label, juce::Rectangle<float> (24.0f, 10.0f).withCentre (at), juce::Justification::centred);
+        }
+
+        // needle, and the hub hidden half under the bottom edge
+        g.drawLine ({ pivot, pointAt (needle, radius + 6.0f) }, 1.8f);
+        g.fillEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (pivot));
 
         g.setFont (font (Face::mono, 10.0f, 0.05f));
-        g.drawText ("VU", 10, 7, 40, 12, juce::Justification::centredLeft);
-        g.drawText (name, getWidth() - 110, 7, 100, 12, juce::Justification::centredRight);
+        g.drawText ("VU", 10, getHeight() - 20, 40, 12, juce::Justification::centredLeft);
+        g.drawText (name, getWidth() - 110, getHeight() - 20, 100, 12, juce::Justification::centredRight);
         g.restoreState();
     }
 }
