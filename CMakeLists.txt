@@ -7,6 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(JUCE)
 
+# French labels are written in UTF-8 in the sources
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # AU only exists on macOS; VST3 everywhere; Standalone for quick tests without a DAW
 if(APPLE)
     set(MONOLITHE_FORMATS VST3 AU Standalone)
@@ -52,4 +57,22 @@ target_link_libraries(Monolithe
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
+
+# Offline renderer: writes one .wav per voice to tune the sound without a DAW
+juce_add_console_app(MonolitheRender PRODUCT_NAME "monolithe_render")
+
+target_sources(MonolitheRender PRIVATE tools/render.cpp)
+target_include_directories(MonolitheRender PRIVATE source)
+
+target_compile_definitions(MonolitheRender
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+target_link_libraries(MonolitheRender
+    PRIVATE
+        juce::juce_audio_formats
+    PUBLIC
+        juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)

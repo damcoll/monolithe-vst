@@ -2,57 +2,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "dsp/Voices.h"
+
 #include <atomic>
-
-// Step 1 placeholder sound: a short low "thump" on C1 (MIDI note 36).
-// It proves the MIDI -> audio path; the real voices come in step 2.
-class TestThump
-{
-public:
-    void prepare (double newSampleRate)
-    {
-        sampleRate = newSampleRate;
-        // per-sample coefficients: pitch ~30 ms, amplitude ~400 ms (time to -60 dB)
-        pitchDecay = (float) std::exp (-6.9 / (0.03 * sampleRate));
-        ampDecay   = (float) std::exp (-6.9 / (0.4 * sampleRate));
-    }
-
-    void trigger (float velocity)
-    {
-        phase = 0.0;
-        amplitude = velocity;
-        pitchEnv = 1.0f;
-        active = true;
-    }
-
-    float nextSample()
-    {
-        if (! active)
-            return 0.0f;
-
-        // pitch falls from 2x to 1x, amplitude decays exponentially
-        const auto freq = 55.0 * (1.0 + pitchEnv);
-        phase += juce::MathConstants<double>::twoPi * freq / sampleRate;
-        if (phase > juce::MathConstants<double>::twoPi)
-            phase -= juce::MathConstants<double>::twoPi;
-
-        const auto out = (float) std::sin (phase) * amplitude;
-
-        pitchEnv *= pitchDecay;
-        amplitude *= ampDecay;
-        if (amplitude < 1.0e-4f)
-            active = false;
-
-        return out;
-    }
-
-private:
-    double sampleRate = 44100.0;
-    double phase = 0.0;
-    float amplitude = 0.0f, pitchEnv = 0.0f;
-    float pitchDecay = 0.0f, ampDecay = 0.0f;
-    bool active = false;
-};
 
 class MonolitheProcessor final : public juce::AudioProcessor
 {
@@ -87,20 +39,36 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    // parameter IDs are stable: Ableton automation depends on them
+    static juce::String paramId (int voice, const char* control) { return "v" + juce::String (voice + 1) + "_" + control; }
+
     juce::AudioProcessorValueTreeState parameters;
 
-    // read by the editor (message thread) to flash the MIDI LED
+    // read by the editor (message thread): MIDI LED and last note received
     std::atomic<int> noteCounter { 0 };
+    std::atomic<int> lastNote { -1 };
 
-    // set by the editor's TEST button, consumed by the audio thread
-    std::atomic<bool> testTrigger { false };
+    // set by the editor's audition buttons (one bit per voice), consumed by the audio thread
+    std::atomic<uint32_t> auditionMask { 0 };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    void trigger (int voice, float velocity);
 
-    TestThump thump;
+    struct VoiceSlot
+    {
+        std::unique_ptr<mono::Voice> dsp;
+        std::atomic<float>* niveau = nullptr;
+        std::atomic<float>* accord = nullptr;
+        std::atomic<float>* duree = nullptr;
+        std::atomic<float>* mute = nullptr;
+        juce::SmoothedValue<float> gain;
+    };
+
+    std::array<VoiceSlot, mono::numVoices> voices;
     juce::SmoothedValue<float> masterGain;
     std::atomic<float>* masterParam = nullptr;
+    std::atomic<float>* accentParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonolitheProcessor)
 };
