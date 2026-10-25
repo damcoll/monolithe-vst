@@ -63,10 +63,12 @@ private:
         std::atomic<float>* duree = nullptr;
         std::atomic<float>* mute = nullptr;
         juce::SmoothedValue<float> gain;
+        int auditionSamplesLeft = 0; // audition buttons send no note-off: release after a while
     };
 
     std::array<VoiceSlot, mono::numVoices> voices;
     juce::SmoothedValue<float> masterGain;
+    int auditionLength = 0;
     std::atomic<float>* masterParam = nullptr;
     std::atomic<float>* accentParam = nullptr;
 

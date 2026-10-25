@@ -50,6 +50,7 @@ void MonolitheProcessor::prepareToPlay (double sampleRate, int)
         v.gain.reset (sampleRate, 0.01);
         v.gain.setCurrentAndTargetValue (v.mute->load() > 0.5f ? 0.0f : v.niveau->load());
     }
+    auditionLength = (int) (0.5 * sampleRate);
     masterGain.reset (sampleRate, 0.02);
     masterGain.setCurrentAndTargetValue (masterParam->load());
 }
@@ -84,8 +85,21 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     {
         for (int i = 0; i < mono::numVoices; ++i)
             if ((mask >> i) & 1u)
+            {
                 trigger (i, 0.8f);
+                voices[(size_t) i].auditionSamplesLeft = auditionLength;
+            }
         noteCounter.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    for (auto& v : voices)
+    {
+        if (v.auditionSamplesLeft > 0)
+        {
+            v.auditionSamplesLeft -= buffer.getNumSamples();
+            if (v.auditionSamplesLeft <= 0 && v.dsp != nullptr)
+                v.dsp->release();
+        }
     }
 
     auto* left = buffer.getWritePointer (0);
@@ -127,6 +141,12 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         else if (msg.isNoteOff() && inRange && voices[(size_t) voice].dsp != nullptr)
         {
             voices[(size_t) voice].dsp->release();
+        }
+        else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        {
+            for (auto& v : voices)
+                if (v.dsp != nullptr)
+                    v.dsp->release();
         }
     }
     renderUntil (buffer.getNumSamples());

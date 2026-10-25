@@ -55,6 +55,7 @@ int main (int argc, char* argv[])
         {
             if (n == 0) voice->trigger (0.5f);
             if (n == secondHit) voice->trigger (1.0f);
+            if (n == secondHit / 2 || n == secondHit + secondHit / 2) voice->release(); // held voices (DRONE)
             out[n] = voice->next();
 
             const auto a = std::abs (out[n]);

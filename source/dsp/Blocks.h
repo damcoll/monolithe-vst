@@ -53,6 +53,28 @@ namespace mono
         float value = 0.0f, coef = 0.0f;
     };
 
+    // Envelope that follows a gate: rises while held, falls once released
+    struct GateEnvelope
+    {
+        void setTimes (double attackSeconds, double releaseSeconds, double sampleRate)
+        {
+            attack = decayCoef (attackSeconds, sampleRate);
+            release = decayCoef (releaseSeconds, sampleRate);
+        }
+
+        void open (float level) { target = level; }
+        void close() { target = 0.0f; }
+
+        float next()
+        {
+            const auto coef = target > value ? attack : release;
+            value = target + (value - target) * coef;
+            return value;
+        }
+
+        float value = 0.0f, target = 0.0f, attack = 0.0f, release = 0.0f;
+    };
+
     // Two-pole resonator that rings when struck, like the bridged-T of a 808.
     // An impulse of amplitude A gives a decaying sine of amplitude ~A.
     struct Resonator

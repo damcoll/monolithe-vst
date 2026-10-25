@@ -184,6 +184,159 @@ namespace mono
         Decay env;
     };
 
+    // 05 BOIS: short high resonator (the bridged-T pushed up), with a noise click
+    class Bois final : public Voice
+    {
+    public:
+        void prepare (double newSampleRate) override
+        {
+            Voice::prepare (newSampleRate);
+            clickFilter.set (4000.0, 0.7, sampleRate);
+            click.setTime (0.006, sampleRate);
+        }
+
+        void trigger (float velocity) override
+        {
+            const auto f = expMap (accord, 400.0, 2500.0);
+            const auto t = expMap (duree, 0.02, 0.25);
+            mode1.setDecay (t, sampleRate);
+            mode2.setDecay (t * 0.4, sampleRate);
+            mode1.setFreq (f, sampleRate);
+            mode2.setFreq (f * 2.76, sampleRate); // second mode of a wooden bar
+            click.trigger (0.3f * velocity);
+            strike = velocity;
+        }
+
+        float next() override
+        {
+            clickFilter.process (noise.next());
+            const auto y = mode1.next (strike) + 0.35f * mode2.next (strike) + clickFilter.high * click.next();
+            strike = 0.0f;
+            return headroom * softClip (y, 1.4f);
+        }
+
+    private:
+        Resonator mode1, mode2;
+        Svf clickFilter;
+        Decay click;
+        Noise noise { 0x5a5a5a5u };
+        float strike = 0.0f;
+    };
+
+    // 07 CLOCHE: two squares a fifth apart (ratio 1.5) in a band-pass,
+    // with a quick drop then a longer tail, like the 808 cowbell
+    class Cloche final : public Voice
+    {
+    public:
+        void prepare (double newSampleRate) override
+        {
+            Voice::prepare (newSampleRate);
+            filter.set (2600.0, 1.4, sampleRate);
+            hit.setTime (0.05, sampleRate);
+            b.phase = 0.31;
+        }
+
+        void trigger (float velocity) override
+        {
+            const auto f = expMap (accord, 270.0, 1100.0);
+            a.setFreq (f, sampleRate);
+            b.setFreq (f * 1.5, sampleRate);
+            tail.setTime (expMap (duree, 0.08, 1.2), sampleRate);
+            hit.trigger (0.6f * velocity);
+            tail.trigger (0.4f * velocity);
+        }
+
+        float next() override
+        {
+            filter.process (a.next() + b.next());
+            const auto y = 0.9f * filter.band * (hit.next() + tail.next());
+            return headroom * softClip (y, 1.4f);
+        }
+
+    private:
+        Square a, b;
+        Svf filter;
+        Decay hit, tail;
+    };
+
+    // 06 SOUFFLE: noise through a resonant low-pass, slow swell then a long fade
+    class Souffle final : public Voice
+    {
+    public:
+        void trigger (float velocity) override
+        {
+            filter.set (expMap (accord, 300.0, 6000.0), 1.2, sampleRate);
+            const auto length = expMap (duree, 0.2, 3.0);
+            swell = 1.0f / (float) (0.08 * length * sampleRate); // rise over 8 % of the length
+            fade.setTime (length, sampleRate);
+            peak = velocity;
+            rising = true;
+        }
+
+        float next() override
+        {
+            if (rising)
+            {
+                level += swell * peak;
+                if (level >= peak)
+                {
+                    level = peak;
+                    rising = false;
+                    fade.trigger (peak);
+                }
+            }
+            else
+            {
+                level = fade.next();
+            }
+
+            filter.process (noise.next());
+            return headroom * softClip (1.9f * filter.low * level, 1.2f);
+        }
+
+    private:
+        Svf filter;
+        Decay fade;
+        Noise noise { 0x7f4a7c1u };
+        float swell = 0.0f, peak = 0.0f, level = 0.0f;
+        bool rising = false;
+    };
+
+    // 08 DRONE: two slightly detuned squares through a low-pass,
+    // held as long as the note is held, DURÉE sets the release
+    class Drone final : public Voice
+    {
+    public:
+        void prepare (double newSampleRate) override
+        {
+            Voice::prepare (newSampleRate);
+            b.phase = 0.4;
+        }
+
+        void trigger (float velocity) override
+        {
+            const auto f = expMap (accord, 40.0, 160.0);
+            a.setFreq (f, sampleRate);
+            b.setFreq (f * 1.007, sampleRate); // ~12 cents: the slow beating of the hardware
+            filter.set (f * 6.0, 0.9, sampleRate);
+            env.setTimes (0.03, expMap (duree, 0.1, 4.0), sampleRate);
+            env.open (velocity);
+        }
+
+        void release() override { env.close(); }
+
+        float next() override
+        {
+            filter.process (a.next() + b.next());
+            return headroom * softClip (0.6f * filter.low * env.next(), 1.3f);
+        }
+
+    private:
+        Square a, b;
+        Svf filter;
+        GateEnvelope env;
+    };
+
     // returns nullptr for the voices not written yet
     inline std::unique_ptr<Voice> makeVoice (int index)
     {
@@ -193,6 +346,10 @@ namespace mono
             case 1: return std::make_unique<Peau>();
             case 2: return std::make_unique<Bruit>();
             case 3: return std::make_unique<Metal>();
+            case 4: return std::make_unique<Bois>();
+            case 5: return std::make_unique<Souffle>();
+            case 6: return std::make_unique<Cloche>();
+            case 7: return std::make_unique<Drone>();
             default: return nullptr;
         }
     }
