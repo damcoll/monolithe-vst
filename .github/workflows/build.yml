@@ -34,12 +34,34 @@ jobs:
         run: cmake --build build --config Release --parallel 4 --target Monolithe_VST3 $([ "$RUNNER_OS" = macOS ] && echo "Monolithe_AU")
 
       # macOS refuses unsigned code on Apple Silicon: an ad-hoc signature is enough to load it
+      - name: Sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --deep -s - build/Monolithe_artefacts/Release/VST3/MONOLITHE.vst3 build/Monolithe_artefacts/Release/AU/MONOLITHE.component
+
+      # pluginval (Tracktion) loads the plugin like a host would; on macOS it also runs auval on the AU
+      - name: Validate
+        shell: bash
+        run: |
+          VST3=build/Monolithe_artefacts/Release/VST3/MONOLITHE.vst3
+          if [ "$RUNNER_OS" = macOS ]; then
+            curl -sfL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
+            unzip -q pluginval.zip
+            PLUGINVAL=pluginval.app/Contents/MacOS/pluginval
+            mkdir -p ~/Library/Audio/Plug-Ins/Components
+            cp -R build/Monolithe_artefacts/Release/AU/MONOLITHE.component ~/Library/Audio/Plug-Ins/Components/
+            $PLUGINVAL --strictness-level 5 --skip-gui-tests --validate-in-process --validate ~/Library/Audio/Plug-Ins/Components/MONOLITHE.component
+          else
+            curl -sfL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip
+            unzip -q pluginval.zip
+            PLUGINVAL=./pluginval.exe
+          fi
+          $PLUGINVAL --strictness-level 5 --skip-gui-tests --validate-in-process --validate "$VST3"
+
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
           mkdir dist
           cd build/Monolithe_artefacts/Release
-          codesign --force --deep -s - VST3/MONOLITHE.vst3 AU/MONOLITHE.component
           ditto -c -k --keepParent VST3/MONOLITHE.vst3 ../../../dist/MONOLITHE-macOS-VST3.zip
           ditto -c -k --keepParent AU/MONOLITHE.component ../../../dist/MONOLITHE-macOS-AU.zip
 
