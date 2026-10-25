@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "dsp/Machine.h"
 #include "dsp/Voices.h"
 
 #include <atomic>
@@ -76,6 +77,10 @@ private:
     int auditionLength = 0;
     std::atomic<float>* masterParam = nullptr;
     std::atomic<float>* accentParam = nullptr;
+    std::atomic<float>* deriveParam = nullptr;
+    std::atomic<float>* poussiereParam = nullptr;
+    mono::Drift drift;
+    mono::Dust dust;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonolitheProcessor)
 };

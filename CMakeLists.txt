@@ -99,3 +99,14 @@ target_link_libraries(MonolitheSnapshot
         Monolithe
     PUBLIC
         juce::juce_recommended_config_flags)
+
+# Demo: a pattern through the whole plugin at several DÉRIVE / POUSSIÈRE settings
+juce_add_console_app(MonolitheDemo PRODUCT_NAME "monolithe_demo")
+target_sources(MonolitheDemo PRIVATE tools/demo.cpp)
+target_include_directories(MonolitheDemo PRIVATE $<TARGET_PROPERTY:Monolithe,INCLUDE_DIRECTORIES>)
+target_compile_definitions(MonolitheDemo PRIVATE $<TARGET_PROPERTY:Monolithe,COMPILE_DEFINITIONS>)
+target_link_libraries(MonolitheDemo
+    PRIVATE
+        Monolithe
+    PUBLIC
+        juce::juce_recommended_config_flags)

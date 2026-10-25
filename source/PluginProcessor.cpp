@@ -16,6 +16,8 @@ MonolitheProcessor::MonolitheProcessor()
     }
     masterParam = parameters.getRawParameterValue ("master");
     accentParam = parameters.getRawParameterValue ("accent");
+    deriveParam = parameters.getRawParameterValue ("derive");
+    poussiereParam = parameters.getRawParameterValue ("poussiere");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout MonolitheProcessor::createLayout()
@@ -33,7 +35,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout MonolitheProcessor::createLa
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { paramId (i, "mute"), 1 }, prefix + "MUTE", false));
     }
 
-    // DÉRIVE and POUSSIÈRE are declared now so the parameter list stays stable; they act from step 4
     layout.add (std::make_unique<Float> (juce::ParameterID { "derive", 1 }, juce::String::fromUTF8 ("DÉRIVE"), unit, 0.2f));
     layout.add (std::make_unique<Float> (juce::ParameterID { "poussiere", 1 }, juce::String::fromUTF8 ("POUSSIÈRE"), unit, 0.2f));
     layout.add (std::make_unique<Float> (juce::ParameterID { "accent", 1 }, "ACCENT", unit, 0.7f));
@@ -51,6 +52,8 @@ void MonolitheProcessor::prepareToPlay (double sampleRate, int)
         v.gain.setCurrentAndTargetValue (v.mute->load() > 0.5f ? 0.0f : v.niveau->load());
     }
     auditionLength = (int) (0.5 * sampleRate);
+    drift.prepare (sampleRate);
+    dust.prepare (sampleRate);
     masterGain.reset (sampleRate, 0.02);
     masterGain.setCurrentAndTargetValue (masterParam->load());
 }
@@ -68,9 +71,11 @@ void MonolitheProcessor::trigger (int voice, float velocity)
 
     // ACCENT = how much the velocity matters: 0 -> every hit is full, 1 -> fully dynamic
     const auto accent = accentParam->load();
-    v.dsp->setControls (v.accord->load(), v.duree->load());
+    const auto hit = drift.apply (voice, v.accord->load(), v.duree->load(),
+                                  1.0f - accent * (1.0f - velocity), deriveParam->load());
+    v.dsp->setControls (hit.accord, hit.duree);
     lastVoice.store (voice, std::memory_order_relaxed);
-    v.dsp->trigger (1.0f - accent * (1.0f - velocity));
+    v.dsp->trigger (hit.velocity);
 }
 
 void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -81,6 +86,8 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (auto& v : voices)
         v.gain.setTargetValue (v.mute->load() > 0.5f ? 0.0f : v.niveau->load());
     masterGain.setTargetValue (masterParam->load());
+    drift.advance (buffer.getNumSamples());
+    dust.setAmount (poussiereParam->load());
 
     if (const auto mask = auditionMask.exchange (0); mask != 0)
     {
@@ -126,7 +133,7 @@ void MonolitheProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                 }
             }
             // MASTER at its default (0.8) is unity gain; tanh tames the peaks of the sum
-            const auto out = std::tanh (mix * 1.25f * masterGain.getNextValue());
+            const auto out = std::tanh (dust.process (mix) * 1.25f * masterGain.getNextValue());
             peakOut = std::max (peakOut, std::abs (out));
             left[sample] = out;
             right[sample] = out;
